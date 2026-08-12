@@ -145,6 +145,8 @@ def insert_active_insulin(conn, user_id, patient):
                 amount
             )
             VALUES (%s,%s,%s)
+            ON CONFLICT (user_id, measured_at)
+            DO NOTHING
             """,
             (
                 user_id,
@@ -174,7 +176,8 @@ def insert_cgm(conn, user_id, patient):
                     trend
                 )
                 VALUES (%s,%s,%s,%s,%s)
-                ON CONFLICT DO NOTHING
+                ON CONFLICT (user_id, reading_time)
+                DO NOTHING
                 """,
                 (
                     user_id,
@@ -241,6 +244,8 @@ def save_current_data(conn, response):
                 reservoir_percent
             )
             VALUES (%s,%s,%s,%s,%s)
+            ON CONFLICT (user_id, measured_at)
+            DO NOTHING
             """,
             (
                 user_id,
@@ -264,6 +269,8 @@ def save_current_data(conn, response):
                     amount
                 )
                 VALUES (%s,%s,%s)
+                ON CONFLICT (user_id, measured_at)
+                DO NOTHING
                 """,
                 (
                     user_id,
@@ -287,6 +294,8 @@ def save_current_data(conn, response):
                     trend
                 )
                 VALUES (%s,%s,%s,%s,%s)
+                ON CONFLICT (user_id, reading_time)
+                DO NOTHING
                 """,
                 (
                     user_id,
@@ -339,4 +348,4 @@ while True:
             client.printUserInfo()
             recent_data = client.getRecentData()
             save_current_data(conn, recent_data)
-    time.sleep(60 * 5)
+    time.sleep(60 * 2)
