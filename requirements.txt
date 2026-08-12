@@ -32,3 +32,4 @@ websocket-client==1.8.0
 wheel==0.45.1
 wsproto==1.2.0
 zstandard==0.25.0
+dotenv==1.2.2
