@@ -7,6 +7,19 @@ import os
 from pathlib import Path
 import psycopg
 
+
+def parse_carelink_datetime(value, client_date_time):
+    parsed = datetime.datetime.fromisoformat(value)
+    if parsed.tzinfo is not None:
+        return parsed
+
+    reference = datetime.datetime.fromisoformat(client_date_time)
+    if reference.tzinfo is None:
+        raise ValueError("CareLink clientDateTime must include a timezone offset")
+
+    return parsed.replace(tzinfo=reference.tzinfo)
+
+
 def get_or_create_user(conn, patient):
     with conn.cursor() as cur:
         cur.execute(
@@ -100,7 +113,7 @@ def get_or_create_device(conn, user_id, patient):
 
         return device_id
 
-def insert_reservoir(conn, user_id, device_id, patient):
+def insert_reservoir(conn, user_id, device_id, patient, client_date_time):
 
     with conn.cursor() as cur:
 
@@ -119,7 +132,10 @@ def insert_reservoir(conn, user_id, device_id, patient):
             (
                 user_id,
                 device_id,
-                patient["lastConduitDateTime"],
+                parse_carelink_datetime(
+                    patient["lastConduitDateTime"],
+                    client_date_time
+                ),
                 patient["reservoirRemainingUnits"],
                 patient["reservoirLevelPercent"]
             )
@@ -127,7 +143,7 @@ def insert_reservoir(conn, user_id, device_id, patient):
 
     conn.commit()
 
-def insert_active_insulin(conn, user_id, patient):
+def insert_active_insulin(conn, user_id, patient, client_date_time):
 
     active = patient.get("activeInsulin")
 
@@ -150,14 +166,14 @@ def insert_active_insulin(conn, user_id, patient):
             """,
             (
                 user_id,
-                active["datetime"],
+                parse_carelink_datetime(active["datetime"], client_date_time),
                 active["amount"]
             )
         )
 
     conn.commit()
 
-def insert_cgm(conn, user_id, patient):
+def insert_cgm(conn, user_id, patient, client_date_time):
 
     sgs = patient.get("sgs", [])
 
@@ -181,7 +197,7 @@ def insert_cgm(conn, user_id, patient):
                 """,
                 (
                     user_id,
-                    sg["timestamp"],
+                    parse_carelink_datetime(sg["timestamp"], client_date_time),
                     sg["sg"],
                     sg["sensorState"],
                     None
@@ -193,6 +209,7 @@ def insert_cgm(conn, user_id, patient):
 def import_carelink_response(conn, response):
 
     patient = response["patientData"]
+    client_date_time = response["metadata"]["clientDateTime"]
 
     user_id = get_or_create_user(conn, patient)
 
@@ -206,19 +223,22 @@ def import_carelink_response(conn, response):
         conn,
         user_id,
         device_id,
-        patient
+        patient,
+        client_date_time
     )
 
     insert_active_insulin(
         conn,
         user_id,
-        patient
+        patient,
+        client_date_time
     )
 
     insert_cgm(
         conn,
         user_id,
-        patient
+        patient,
+        client_date_time
     )
 
     return user_id, device_id
@@ -226,6 +246,7 @@ def import_carelink_response(conn, response):
 def save_current_data(conn, response):
 
     patient = response["patientData"]
+    client_date_time = response["metadata"]["clientDateTime"]
 
     user_id = get_or_create_user(conn, patient)
     device_id = get_or_create_device(conn, user_id, patient)
@@ -244,13 +265,16 @@ def save_current_data(conn, response):
                 reservoir_percent
             )
             VALUES (%s,%s,%s,%s,%s)
-            ON CONFLICT (user_id, measured_at)
+            ON CONFLICT (device_id, measured_at)
             DO NOTHING
             """,
             (
                 user_id,
                 device_id,
-                patient["lastConduitDateTime"],
+                parse_carelink_datetime(
+                    patient["lastConduitDateTime"],
+                    client_date_time
+                ),
                 patient["reservoirRemainingUnits"],
                 patient["reservoirLevelPercent"]
             )
@@ -274,7 +298,7 @@ def save_current_data(conn, response):
                 """,
                 (
                     user_id,
-                    active["datetime"],
+                    parse_carelink_datetime(active["datetime"], client_date_time),
                     active["amount"]
                 )
             )
@@ -299,7 +323,7 @@ def save_current_data(conn, response):
                 """,
                 (
                     user_id,
-                    sg["timestamp"],
+                    parse_carelink_datetime(sg["timestamp"], client_date_time),
                     sg["sg"],
                     sg["sensorState"],
                     patient.get("lastSGTrend")

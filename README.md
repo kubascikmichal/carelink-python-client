@@ -11,6 +11,7 @@
     - [Clone this repository](#clone-this-repository)
     - [Install dependencies](#install-dependencies)
     - [Get login data](#get-login-data)
+    - [Create the database schema](#create-the-database-schema)
     - [Download pump and sensor data](#download-pump-and-sensor-data)
       - [Using the CLI tool](#using-the-cli-tool)
       - [Using the library](#using-the-library)
@@ -93,6 +94,16 @@ python3 carelink_carepartner_api_login.py
 *Note*: you need to add the `--us` option to this command if you have a US Carelink account.
 
 The Carelink Client reads this file from the local folder and it will take care of refreshing automatically the login data when it expires. It should be able to do so within one week of the last refresh.
+
+### Create the database schema
+
+The database uploader expects PostgreSQL connection settings in the environment (or a `.env` file): `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`.
+
+Create the `carelink` schema and its tables once before starting the uploader:
+
+```
+python3 create_carelink_schema.py
+```
 
 ### Download pump and sensor data
 
