@@ -372,4 +372,4 @@ while True:
             client.printUserInfo()
             recent_data = client.getRecentData()
             save_current_data(conn, recent_data)
-    time.sleep(60 * 2)
+    time.sleep(30*5)
