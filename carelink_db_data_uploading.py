@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import os
 from pathlib import Path
 import psycopg
+import requests
 
 
 def parse_carelink_datetime(value, client_date_time):
@@ -18,6 +19,20 @@ def parse_carelink_datetime(value, client_date_time):
         raise ValueError("CareLink clientDateTime must include a timezone offset")
 
     return parsed.replace(tzinfo=reference.tzinfo)
+
+
+def get_recent_data_with_retry(client, retries=3):
+    for attempt in range(retries):
+        try:
+            return client.getRecentData()
+        except requests.exceptions.RequestException as error:
+            print(
+                f"CareLink request failed (attempt {attempt + 1}/{retries}): {error}"
+            )
+            if attempt + 1 < retries:
+                time.sleep(5 * (attempt + 1))
+
+    return None
 
 
 def get_or_create_user(conn, patient):
@@ -449,6 +464,7 @@ while True:
     for client in clients:
         if client.init():
             client.printUserInfo()
-            recent_data = client.getRecentData()
-            save_current_data(conn, recent_data)
+            recent_data = get_recent_data_with_retry(client)
+            if recent_data is not None:
+                save_current_data(conn, recent_data)
     time.sleep(30*5)
