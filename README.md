@@ -105,6 +105,17 @@ Create the `carelink` schema and its tables once before starting the uploader:
 python3 create_carelink_schema.py
 ```
 
+To drop the existing `carelink` schema, reset all identity IDs, and recreate
+the tables, run:
+
+```
+python3 carelink_reset_schema.py
+```
+
+The reset command is destructive. The schema also stores bolus events in
+`carelink.bolus_data` and automated basal delivery events in
+`carelink.basal_data`.
+
 ### Download pump and sensor data
 
 #### Using the CLI tool

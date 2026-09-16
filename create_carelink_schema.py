@@ -53,6 +53,28 @@ CREATE TABLE IF NOT EXISTS carelink.cgm_reading (
     trend TEXT,
     UNIQUE (user_id, reading_time)
 );
+
+CREATE TABLE IF NOT EXISTS carelink.bolus_data (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES carelink.app_user(id) ON DELETE CASCADE,
+    event_time TIMESTAMPTZ NOT NULL,
+    insulin_type TEXT,
+    programmed_amount NUMERIC,
+    delivered_amount NUMERIC,
+    activation_type TEXT,
+    completed BOOLEAN,
+    bolus_type TEXT,
+    UNIQUE (user_id, event_time)
+);
+
+CREATE TABLE IF NOT EXISTS carelink.basal_data (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES carelink.app_user(id) ON DELETE CASCADE,
+    event_time TIMESTAMPTZ NOT NULL,
+    delivered_amount NUMERIC,
+    max_basal_rate NUMERIC,
+    UNIQUE (user_id, event_time)
+);
 """
 
 

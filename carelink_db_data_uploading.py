@@ -206,6 +206,71 @@ def insert_cgm(conn, user_id, patient, client_date_time):
 
     conn.commit()
 
+def insert_delivery_data(conn, user_id, patient, client_date_time):
+
+    with conn.cursor() as cur:
+
+        for marker in patient.get("markers", []):
+            values = marker.get("data", {}).get("dataValues", {})
+            event_time = marker.get("timestamp")
+
+            if not event_time:
+                continue
+
+            if marker.get("type") == "INSULIN":
+                cur.execute(
+                    """
+                    INSERT INTO carelink.bolus_data
+                    (
+                        user_id,
+                        event_time,
+                        insulin_type,
+                        programmed_amount,
+                        delivered_amount,
+                        activation_type,
+                        completed,
+                        bolus_type
+                    )
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (user_id, event_time)
+                    DO NOTHING
+                    """,
+                    (
+                        user_id,
+                        parse_carelink_datetime(event_time, client_date_time),
+                        values.get("insulinType"),
+                        values.get("programmedFastAmount"),
+                        values.get("deliveredFastAmount"),
+                        values.get("activationType"),
+                        values.get("completed"),
+                        values.get("bolusType")
+                    )
+                )
+
+            elif marker.get("type") == "AUTO_BASAL_DELIVERY":
+                cur.execute(
+                    """
+                    INSERT INTO carelink.basal_data
+                    (
+                        user_id,
+                        event_time,
+                        delivered_amount,
+                        max_basal_rate
+                    )
+                    VALUES (%s,%s,%s,%s)
+                    ON CONFLICT (user_id, event_time)
+                    DO NOTHING
+                    """,
+                    (
+                        user_id,
+                        parse_carelink_datetime(event_time, client_date_time),
+                        values.get("bolusAmount"),
+                        values.get("maxAutoBasalRate")
+                    )
+                )
+
+    conn.commit()
+
 def import_carelink_response(conn, response):
 
     patient = response["patientData"]
@@ -235,6 +300,13 @@ def import_carelink_response(conn, response):
     )
 
     insert_cgm(
+        conn,
+        user_id,
+        patient,
+        client_date_time
+    )
+
+    insert_delivery_data(
         conn,
         user_id,
         patient,
@@ -331,6 +403,13 @@ def save_current_data(conn, response):
             )
 
     conn.commit()
+
+    insert_delivery_data(
+        conn,
+        user_id,
+        patient,
+        client_date_time
+    )
 
 load_dotenv()
 
