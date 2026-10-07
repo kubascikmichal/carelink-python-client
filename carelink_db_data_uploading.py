@@ -7,6 +7,14 @@ import os
 from pathlib import Path
 import psycopg
 import requests
+import logging as log
+
+FORMAT = "[%(asctime)s:%(levelname)s] %(message)s"
+log.basicConfig(format=FORMAT, datefmt="%Y-%m-%d %H:%M:%S", level=log.INFO)
+
+# Number of consecutive client.init() failures before warning (and the
+# repeat interval afterwards) that a client's refresh token looks dead.
+INIT_FAILURE_WARNING_THRESHOLD = 5
 
 
 def parse_carelink_datetime(value, client_date_time):
@@ -442,13 +450,18 @@ for file in user_files_path.glob("*.json"):
     users.append(file)
 print(users)
 
-conn = psycopg.connect(
-    host=db_host,
-    port=db_port,
-    dbname=db_name,
-    user=db_user,
-    password=db_password
-)
+
+def connect_db():
+    return psycopg.connect(
+        host=db_host,
+        port=db_port,
+        dbname=db_name,
+        user=db_user,
+        password=db_password
+    )
+
+
+conn = connect_db()
 
 with conn.cursor() as cur:
     cur.execute("SELECT NOW()")
@@ -457,14 +470,48 @@ with conn.cursor() as cur:
 clients = []
 for user in users:
     client = carelink_client2.CareLinkClient(user)
-    clients.append(client)
+    clients.append((user, client))
 
 print("Clients created")
+
+init_failure_counts = {}
+
 while True:
-    for client in clients:
-        if client.init():
-            client.printUserInfo()
-            recent_data = get_recent_data_with_retry(client)
-            if recent_data is not None:
-                save_current_data(conn, recent_data)
+    for user_file, client in clients:
+        try:
+            if client.init():
+                init_failure_counts[user_file] = 0
+                client.printUserInfo()
+                recent_data = get_recent_data_with_retry(client)
+                if recent_data is not None:
+                    save_current_data(conn, recent_data)
+            else:
+                failures = init_failure_counts.get(user_file, 0) + 1
+                init_failure_counts[user_file] = failures
+                if failures == INIT_FAILURE_WARNING_THRESHOLD or (
+                    failures > INIT_FAILURE_WARNING_THRESHOLD
+                    and failures % INIT_FAILURE_WARNING_THRESHOLD == 0
+                ):
+                    log.warning(
+                        "%s failed to initialize %d consecutive times - "
+                        "the refresh token may be expired/invalid and require a fresh login",
+                        user_file, failures
+                    )
+        except psycopg.OperationalError as error:
+            log.error("Database connection error while processing %s: %s", user_file, error)
+            try:
+                conn.close()
+            except Exception:
+                pass
+            try:
+                conn = connect_db()
+                log.info("Reconnected to the database")
+            except Exception as reconnect_error:
+                log.error("Failed to reconnect to the database: %s", reconnect_error)
+        except Exception as error:
+            log.error("Unexpected error while processing %s: %s", user_file, error)
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                log.error("Rollback failed: %s", rollback_error)
     time.sleep(30*5)
