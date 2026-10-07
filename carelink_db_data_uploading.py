@@ -199,10 +199,14 @@ def insert_active_insulin(conn, user_id, patient, client_date_time):
 def insert_cgm(conn, user_id, patient, client_date_time):
 
     sgs = patient.get("sgs", [])
+    last_sg = patient.get("lastSG") or {}
+    last_sg_timestamp = last_sg.get("timestamp")
 
     with conn.cursor() as cur:
 
         for sg in sgs:
+
+            trend = patient.get("lastSGTrend") if sg["timestamp"] == last_sg_timestamp else None
 
             cur.execute(
                 """
@@ -223,7 +227,7 @@ def insert_cgm(conn, user_id, patient, client_date_time):
                     parse_carelink_datetime(sg["timestamp"], client_date_time),
                     sg["sg"],
                     sg["sensorState"],
-                    None
+                    trend
                 )
             )
 
@@ -398,34 +402,18 @@ def save_current_data(conn, response):
                 )
             )
 
-        # last SG only
-        sg = patient.get("lastSG")
-
-        if sg:
-            cur.execute(
-                """
-                INSERT INTO carelink.cgm_reading
-                (
-                    user_id,
-                    reading_time,
-                    glucose_value,
-                    sensor_state,
-                    trend
-                )
-                VALUES (%s,%s,%s,%s,%s)
-                ON CONFLICT (user_id, reading_time)
-                DO NOTHING
-                """,
-                (
-                    user_id,
-                    parse_carelink_datetime(sg["timestamp"], client_date_time),
-                    sg["sg"],
-                    sg["sensorState"],
-                    patient.get("lastSGTrend")
-                )
-            )
-
     conn.commit()
+
+    # CGM history: CareLink returns a rolling window (commonly ~24h) of sensor
+    # glucose readings in "sgs" on every poll, not just the latest value. Re-inserting
+    # the whole window each time (deduped via ON CONFLICT DO NOTHING) backfills any
+    # readings missed while the phone was offline, once it reconnects and catches up.
+    insert_cgm(
+        conn,
+        user_id,
+        patient,
+        client_date_time
+    )
 
     insert_delivery_data(
         conn,
