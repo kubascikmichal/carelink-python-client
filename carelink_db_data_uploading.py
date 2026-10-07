@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 import os
 from pathlib import Path
 import psycopg
-import requests
 import logging as log
 
 FORMAT = "[%(asctime)s:%(levelname)s] %(message)s"
@@ -33,9 +32,14 @@ def get_recent_data_with_retry(client, retries=3):
     for attempt in range(retries):
         try:
             return client.getRecentData()
-        except requests.exceptions.RequestException as error:
-            print(
-                f"CareLink request failed (attempt {attempt + 1}/{retries}): {error}"
+        except Exception as error:
+            # Broad on purpose: getRecentData() can also raise a plain Exception
+            # (not requests.exceptions.RequestException) from a failed token
+            # refresh, and that transient case deserves the same retry/backoff
+            # as a network error instead of skipping straight to the caller.
+            log.warning(
+                "CareLink request failed (attempt %d/%d): %s",
+                attempt + 1, retries, error
             )
             if attempt + 1 < retries:
                 time.sleep(5 * (attempt + 1))
