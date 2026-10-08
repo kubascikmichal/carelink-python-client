@@ -469,7 +469,7 @@ print("Clients created")
 init_failure_counts = {}
 
 while True:
-    for user_file, client in clients:
+    for index, (user_file, client) in enumerate(clients):
         try:
             if client.init():
                 init_failure_counts[user_file] = 0
@@ -506,4 +506,12 @@ while True:
                 conn.rollback()
             except Exception as rollback_error:
                 log.error("Rollback failed: %s", rollback_error)
+
+        # Space out back-to-back OAuth/API calls for different accounts.
+        # Firing them immediately one after another from the same IP/client_id
+        # looks like multi-account automation to CareLink's backend and has
+        # been observed to make one account's token refresh fail while the
+        # other succeeds, even though each works fine when run alone.
+        if index + 1 < len(clients):
+            time.sleep(10)
     time.sleep(30*5)
